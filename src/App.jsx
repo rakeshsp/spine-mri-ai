@@ -4,6 +4,30 @@ const REGIONS = [
   { id: "cervical", label: "Cervical" },
   { id: "thoracic", label: "Thoracic" },
   { id: "lumbar", label: "Lumbar" },
+  { id: "whole", label: "Whole spine" },
+];
+
+const CERVICAL_LEVELS = ["C2C3", "C3C4", "C4C5", "C5C6", "C6C7", "C7T1"];
+const THORACIC_LEVELS = [
+  "T1T2",
+  "T2T3",
+  "T3T4",
+  "T4T5",
+  "T5T6",
+  "T6T7",
+  "T7T8",
+  "T8T9",
+  "T9T10",
+  "T10T11",
+  "T11T12",
+  "T12L1",
+];
+const LUMBAR_LEVELS = ["L1L2", "L2L3", "L3L4", "L4L5", "L5S1"];
+
+const ALL_LEVEL_KEYS = [
+  ...CERVICAL_LEVELS,
+  ...THORACIC_LEVELS,
+  ...LUMBAR_LEVELS,
 ];
 
 const PFIRRMANN = [
@@ -26,6 +50,48 @@ const ALIGNMENT = [
   "Scoliosis",
   "Spondylolisthesis",
 ];
+
+function makeDefaultLevel() {
+  return {
+    pfirrmann: "II – Inhomogeneous, normal height",
+    herniation: "None",
+    canal: "None",
+    foraminal: "None",
+    modic: "None",
+    comments: "",
+  };
+}
+
+function makeInitialLevels() {
+  const levels = {};
+  ALL_LEVEL_KEYS.forEach((key) => {
+    levels[key] = makeDefaultLevel();
+  });
+  levels["L4L5"] = {
+    ...levels["L4L5"],
+    herniation: "Broad-based disc bulge",
+    canal: "Mild",
+    foraminal: "Mild",
+    modic: "Type II",
+  };
+  levels["L5S1"] = {
+    ...levels["L5S1"],
+    herniation: "Central / paracentral disc protrusion",
+    canal: "Mild",
+    foraminal: "Moderate",
+    modic: "None",
+  };
+  return levels;
+}
+
+function getRegionLevelKeys(region) {
+  if (region === "cervical") return CERVICAL_LEVELS;
+  if (region === "thoracic") return THORACIC_LEVELS;
+  if (region === "lumbar") return LUMBAR_LEVELS;
+  if (region === "whole")
+    return [...CERVICAL_LEVELS, ...THORACIC_LEVELS, ...LUMBAR_LEVELS];
+  return [];
+}
 
 function SectionCard({ title, children }) {
   return (
@@ -122,34 +188,7 @@ export default function App() {
 
   const [alignmentVal, setAlignmentVal] = useState("Physiological");
 
-  const [levels, setLevels] = useState({
-    L3L4: {
-      pfirrmann: "II – Inhomogeneous, normal height",
-      herniation: "None",
-      canal: "None",
-      foraminal: "None",
-      modic: "None",
-      comments: "",
-    },
-    L4L5: {
-      pfirrmann:
-        "III – Inhomogeneous, intermediate, normal/slightly decreased height",
-      herniation: "Broad-based disc bulge",
-      canal: "Mild",
-      foraminal: "Mild",
-      modic: "Type II",
-      comments: "",
-    },
-    L5S1: {
-      pfirrmann:
-        "III – Inhomogeneous, intermediate, normal/slightly decreased height",
-      herniation: "Central / paracentral disc protrusion",
-      canal: "Mild",
-      foraminal: "Moderate",
-      modic: "None",
-      comments: "",
-    },
-  });
+  const [levels, setLevels] = useState(() => makeInitialLevels());
 
   const [cordCauda, setCordCauda] = useState({
     signal: "Normal",
@@ -196,10 +235,59 @@ export default function App() {
     setCordCauda((prev) => ({ ...prev, [field]: value }));
   };
 
+  const applyNormalStudy = () => {
+    const normalLevels = {};
+    ALL_LEVEL_KEYS.forEach((key) => {
+      normalLevels[key] = {
+        pfirrmann: "II – Inhomogeneous, normal height",
+        herniation: "None",
+        canal: "None",
+        foraminal: "None",
+        modic: "None",
+        comments: "",
+      };
+    });
+    setLevels(normalLevels);
+    setAlignmentVal("Physiological");
+    setCordCauda({
+      signal: "Normal",
+      compression: "None",
+      myelomalacia: "Absent",
+      comments: "",
+    });
+    setOthers({
+      vertebrae:
+        "Vertebral body heights and marrow signal are maintained. No suspicious focal lesion.",
+      ligaments: "Posterior elements and ligamentum flavum are unremarkable.",
+      paraspinal: "No significant paraspinal or epidural collection.",
+      conus: "Conus terminates at L1 with normal morphology and signal.",
+    });
+
+    let imp;
+    if (region === "lumbar") {
+      imp =
+        "MRI lumbar spine within normal limits. No significant disc bulge, spinal canal or neural foraminal stenosis.";
+    } else if (region === "cervical") {
+      imp =
+        "MRI cervical spine within normal limits. No disc herniation or spinal canal stenosis. No cord signal abnormality.";
+    } else if (region === "thoracic") {
+      imp =
+        "MRI thoracic spine within normal limits. No disc herniation or spinal canal stenosis. No cord signal abnormality.";
+    } else {
+      imp =
+        "MRI whole spine within normal limits. No significant disc herniation, spinal canal or neural foraminal stenosis. No abnormal cord or conus signal.";
+    }
+    setImpressionKeyPoints(imp);
+  };
+
   const buildReport = () => {
     const lines = [];
 
-    lines.push("MRI SPINE (" + region.toUpperCase() + ")");
+    const regionTitle =
+      region === "whole"
+        ? "MRI WHOLE SPINE"
+        : `MRI SPINE (${region.toUpperCase()})`;
+    lines.push(regionTitle);
     lines.push("");
 
     const demographics = [
@@ -230,10 +318,10 @@ export default function App() {
     lines.push("");
 
     lines.push("DISCS & NEURAL FORAMINA:");
-    Object.entries(levels).forEach(([key, val]) => {
-      const [sup, inf] = key.split(/(?=[A-Z])/);
-      const levelLabel = sup && inf ? `${sup}-${inf}` : key;
-
+    const regionLevels = getRegionLevelKeys(region);
+    regionLevels.forEach((key) => {
+      const val = levels[key];
+      if (!val) return;
       const segLines = [];
       if (val.pfirrmann) segLines.push(`Pfirrmann grade: ${val.pfirrmann}.`);
       if (val.herniation && val.herniation !== "None")
@@ -247,18 +335,21 @@ export default function App() {
       if (val.comments) segLines.push(val.comments.trim());
 
       if (segLines.length > 0) {
-        lines.push(` ${levelLabel}: ` + segLines.join(" "));
+        lines.push(` ${key}: ` + segLines.join(" "));
       } else {
-        lines.push(` ${levelLabel}: No significant abnormality.`);
+        lines.push(` ${key}: No significant abnormality.`);
       }
     });
     lines.push("");
 
-    lines.push(
+    const cordHeading =
       region === "cervical" || region === "thoracic"
         ? "SPINAL CORD:"
-        : "CAUDA EQUINA / CONUS:"
-    );
+        : region === "whole"
+        ? "SPINAL CORD / CONUS / CAUDA EQUINA:"
+        : "CAUDA EQUINA / CONUS:";
+    lines.push(cordHeading);
+
     const cordBits = [];
     cordBits.push(`Signal: ${cordCauda.signal || ""}.`);
     if (cordCauda.compression && cordCauda.compression !== "None")
@@ -277,7 +368,7 @@ export default function App() {
     lines.push(" " + (others.paraspinal || ""));
     lines.push("");
 
-    if (region === "lumbar") {
+    if (region === "lumbar" || region === "whole") {
       lines.push("CONUS:");
       lines.push(" " + (others.conus || ""));
       lines.push("");
@@ -353,7 +444,7 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <span className="px-2 py-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 font-mono">
-              v0.1 – Single-page web app
+              v0.2 – Whole spine + normal template
             </span>
           </div>
         </div>
@@ -373,6 +464,13 @@ export default function App() {
                   {r.label}
                 </TagToggle>
               ))}
+              <button
+                type="button"
+                onClick={applyNormalStudy}
+                className="ml-auto text-[11px] px-3 py-1.5 rounded-full border border-emerald-500/60 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20"
+              >
+                Normal study autopopulate
+              </button>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -460,127 +558,123 @@ export default function App() {
             </div>
           </SectionCard>
 
-          <SectionCard title="Level-wise assessment (example lumbar levels shown)">
+          <SectionCard title="Level-wise assessment">
             <div className="text-[11px] text-slate-400 mb-2">
-              Extend or adapt these levels for cervical / thoracic templates in
-              your own fork.
+              Region filter above controls which cervical / thoracic / lumbar
+              levels are shown. Whole-spine mode displays all segments.
             </div>
-            <div className="space-y-3">
-              {Object.entries(levels).map(([key, val]) => (
-                <div
-                  key={key}
-                  className="border border-slate-700/80 rounded-2xl p-3 bg-slate-950/60"
-                >
-                  <div className="flex justify-between items-center mb-2">
-                    <div className="text-xs font-semibold text-slate-200 tracking-wide">
-                      {key}
+            <div className="space-y-3 max-h-[460px] overflow-auto pr-1">
+              {getRegionLevelKeys(region).map((key) => {
+                const val = levels[key];
+                if (!val) return null;
+                return (
+                  <div
+                    key={key}
+                    className="border border-slate-700/80 rounded-2xl p-3 bg-slate-950/60"
+                  >
+                    <div className="flex justify-between items-center mb-2">
+                      <div className="text-xs font-semibold text-slate-200 tracking-wide">
+                        {key}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleLevelChange(key, "herniation", "None")
+                        }
+                        className="text-[10px] px-2 py-1 rounded-full border border-slate-600 text-slate-300 hover:border-emerald-400"
+                      >
+                        Mark as normal
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleLevelChange(key, "herniation", "None")
-                      }
-                      className="text-[10px] px-2 py-1 rounded-full border border-slate-600 text-slate-300 hover:border-emerald-400"
-                    >
-                      Mark as normal
-                    </button>
-                  </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
-                    <div>
-                      <Label>Pfirrmann grade</Label>
-                      <Select
-                        value={val.pfirrmann}
-                        onChange={(e) =>
-                          handleLevelChange(
-                            key,
-                            "pfirrmann",
-                            e.target.value
-                          )
-                        }
-                        options={PFIRRMANN}
-                      />
-                    </div>
-                    <div>
-                      <Label>Disc pathology</Label>
-                      <Select
-                        value={val.herniation}
-                        onChange={(e) =>
-                          handleLevelChange(
-                            key,
-                            "herniation",
-                            e.target.value
-                          )
-                        }
-                        options={[
-                          "None",
-                          "Broad-based disc bulge",
-                          "Focal protrusion",
-                          "Extrusion",
-                          "Sequestered fragment",
-                          "Annular fissure",
-                        ]}
-                      />
-                    </div>
-                    <div>
-                      <Label>Central canal stenosis</Label>
-                      <Select
-                        value={val.canal}
-                        onChange={(e) =>
-                          handleLevelChange(
-                            key,
-                            "canal",
-                            e.target.value
-                          )
-                        }
-                        options={STENOSIS}
-                      />
-                    </div>
-                    <div>
-                      <Label>Foraminal stenosis</Label>
-                      <Select
-                        value={val.foraminal}
-                        onChange={(e) =>
-                          handleLevelChange(
-                            key,
-                            "foraminal",
-                            e.target.value
-                          )
-                        }
-                        options={STENOSIS}
-                      />
-                    </div>
-                    <div>
-                      <Label>Modic / endplate changes</Label>
-                      <Select
-                        value={val.modic}
-                        onChange={(e) =>
-                          handleLevelChange(
-                            key,
-                            "modic",
-                            e.target.value
-                          )
-                        }
-                        options={MODIC}
-                      />
-                    </div>
-                    <div>
-                      <Label>Additional comments</Label>
-                      <TextArea
-                        value={val.comments}
-                        onChange={(e) =>
-                          handleLevelChange(
-                            key,
-                            "comments",
-                            e.target.value
-                          )
-                        }
-                        placeholder="e.g. Left paracentral component indenting the thecal sac, contacting the traversing L5 nerve root."
-                      />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+                      <div>
+                        <Label>Pfirrmann grade</Label>
+                        <Select
+                          value={val.pfirrmann}
+                          onChange={(e) =>
+                            handleLevelChange(
+                              key,
+                              "pfirrmann",
+                              e.target.value
+                            )
+                          }
+                          options={PFIRRMANN}
+                        />
+                      </div>
+                      <div>
+                        <Label>Disc pathology</Label>
+                        <Select
+                          value={val.herniation}
+                          onChange={(e) =>
+                            handleLevelChange(
+                              key,
+                              "herniation",
+                              e.target.value
+                            )
+                          }
+                          options={[
+                            "None",
+                            "Broad-based disc bulge",
+                            "Focal protrusion",
+                            "Extrusion",
+                            "Sequestered fragment",
+                            "Annular fissure",
+                          ]}
+                        />
+                      </div>
+                      <div>
+                        <Label>Central canal stenosis</Label>
+                        <Select
+                          value={val.canal}
+                          onChange={(e) =>
+                            handleLevelChange(key, "canal", e.target.value)
+                          }
+                          options={STENOSIS}
+                        />
+                      </div>
+                      <div>
+                        <Label>Foraminal stenosis</Label>
+                        <Select
+                          value={val.foraminal}
+                          onChange={(e) =>
+                            handleLevelChange(
+                              key,
+                              "foraminal",
+                              e.target.value
+                            )
+                          }
+                          options={STENOSIS}
+                        />
+                      </div>
+                      <div>
+                        <Label>Modic / endplate changes</Label>
+                        <Select
+                          value={val.modic}
+                          onChange={(e) =>
+                            handleLevelChange(key, "modic", e.target.value)
+                          }
+                          options={MODIC}
+                        />
+                      </div>
+                      <div>
+                        <Label>Additional comments</Label>
+                        <TextArea
+                          value={val.comments}
+                          onChange={(e) =>
+                            handleLevelChange(
+                              key,
+                              "comments",
+                              e.target.value
+                            )
+                          }
+                          placeholder="e.g. Left paracentral component indenting the thecal sac, contacting the traversing nerve root."
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </SectionCard>
 
@@ -588,6 +682,8 @@ export default function App() {
             title={
               region === "cervical" || region === "thoracic"
                 ? "Spinal cord & canal"
+                : region === "whole"
+                ? "Cord / conus / cauda equina & canal"
                 : "Conus / cauda equina & canal"
             }
           >
@@ -674,7 +770,7 @@ export default function App() {
                   }
                 />
               </div>
-              {region === "lumbar" && (
+              {(region === "lumbar" || region === "whole") && (
                 <div>
                   <Label>Conus description</Label>
                   <TextArea
@@ -753,7 +849,8 @@ export default function App() {
                 {isAiLoading ? "Contacting AI..." : "Send to AI backend"}
               </button>
               <div className="text-[10px] text-slate-500 max-w-[60%] text-right">
-                Backend contract: POST /api/ai-refine → {"{\"impression\": \"string\"}"}. You control the prompt and model (OpenAI, Azure, local, etc.).
+                Backend contract: POST /api/ai-refine → {"{\"impression\": \"string\"}"}. You
+                control the prompt and model (OpenAI, Azure, local, etc.).
               </div>
             </div>
           </SectionCard>
@@ -761,28 +858,16 @@ export default function App() {
           <SectionCard title="Implementation notes">
             <ul className="list-disc list-inside text-[11px] text-slate-400 space-y-1">
               <li>
-                Drop this component into any React stack (CRA, Next.js, Vite).
-                Tailwind utility classes are used for styling.
+                Region selector now supports cervical, thoracic, lumbar and
+                whole-spine contexts with level lists filtered accordingly.
               </li>
               <li>
-                Extend the{" "}
-                <code className="px-1 bg-slate-800 rounded text-[10px]">
-                  levels
-                </code>{" "}
-                state to cover all cervical / thoracic segments with the same
-                pattern.
+                The normal-study button resets alignment, levels, cord and
+                impression to a clean baseline for the active region.
               </li>
               <li>
-                Replace the{" "}
-                <code className="px-1 bg-slate-800 rounded text-[10px]">
-                  /api/ai-refine
-                </code>{" "}
-                endpoint with your own LLM integration, enforcing PHI policies
-                on your side.
-              </li>
-              <li>
-                This app deliberately keeps the impression separate so you
-                always retain editorial control for exams and reporting.
+                You can continue to evolve text blocks to match your reporting
+                style without changing the overall structure.
               </li>
             </ul>
           </SectionCard>
